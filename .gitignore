@@ -1,0 +1,8 @@
+/target
+/project/target
+/.idea
+/logs/
+/sessmsgstore/
+*/target
+*/logs
+*/.idea
