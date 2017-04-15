@@ -68,7 +68,7 @@ class SfServerGuardianActor extends Actor with ActorLogging {
 
       // This message store is file based, and it implements both the message store
       // and the SessionOpenTodayStore, which is why it is passed in twice below as a parameter
-      val msgStore = new SfFileMessageStore(settings.pathToFileStore)
+      val msgStore = new SfFileMessageStore(settings.pathToFileStore, 100000)
 
       booter = Some(new SfAcceptorBooter(self, context, Some(msgStore), msgStore, businessComms))
     } catch {
