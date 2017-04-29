@@ -4,7 +4,7 @@
 
 A Scala Fix Engine implementation.  It is a full implementation of the session level protocol, tested using the sackfix tester project, supporting acceptor and initiators using AKKA and Scala.
 
-To get started simply download the [examples project](https://github.com/PendaRed/sackfixexamples) and start the acceptor and then the initiator.   The SackFix suite consists of
+To get started simply download this project and start the acceptor and then the initiator - [follow this guide](http://www.sackfix.org/runningtheexamples.html).   The SackFix suite consists of
 
 * [Examples](https://github.com/PendaRed/sackfixexamples): This is all you need!
 * [Tester](https://github.com/PendaRed/sackfixtests): A very simple test suite to stress out any Session level implementation.
