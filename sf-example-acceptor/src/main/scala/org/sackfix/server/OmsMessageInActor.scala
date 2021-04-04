@@ -1,12 +1,14 @@
 package org.sackfix.server
 
-import java.time.LocalDateTime
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import java.time.LocalDateTime
 import org.sackfix.boostrap._
 import org.sackfix.common.message.SfMessage
 import org.sackfix.field._
 import org.sackfix.fix44._
+import org.sackfix.session.SfSessionActor.{BusinessFixMsgOut, SfSessionActorCommand}
 import org.sackfix.session.SfSessionId
 
 import scala.collection.mutable
@@ -20,39 +22,45 @@ import scala.collection.mutable
   * This will pretty much avoid all back pressure issues. ie if sendMessages.size>1 wait
   */
 object OMSMessageInActor {
-  def props(): Props = Props(new OMSMessageInActor)
+  def apply(): Behavior[SfBusinessFixInfo] =
+    Behaviors.setup(context => new OMSMessageInActor(context))
 }
 
-class OMSMessageInActor extends Actor with ActorLogging {
+class OMSMessageInActor(context: ActorContext[SfBusinessFixInfo]) extends  AbstractBehavior[SfBusinessFixInfo](context) {
   private val sentMessages = mutable.HashMap.empty[String, Long]
   private var isOpen = false
 
-  override def receive: Receive = {
-    case FixSessionOpen(sessionId: SfSessionId, sfSessionActor: ActorRef) =>
-      log.info(s"Session ${sessionId.id} is OPEN for business")
+  override def onMessage(msg: SfBusinessFixInfo): Behavior[SfBusinessFixInfo] = msg match {
+    case FixSessionOpen(sessionId: SfSessionId, sfSessionActor: ActorRef[SfSessionActorCommand]) =>
+      context.log.info(s"Session ${sessionId.id} is OPEN for business")
       isOpen = true
+      Behaviors.same
     case FixSessionClosed(sessionId: SfSessionId) =>
-      log.info(s"Session ${sessionId.id} is CLOSED for business")
+      context.log.info(s"Session ${sessionId.id} is CLOSED for business")
       isOpen = false
-    case BusinessFixMessage(sessionId: SfSessionId, sfSessionActor: ActorRef, message: SfMessage) =>
+      Behaviors.same
+    case BusinessFixMessage(sessionId: SfSessionId, sfSessionActor: ActorRef[SfSessionActorCommand], message: SfMessage) =>
       message.body match {
         case m: NewOrderSingleMessage => onNewOrderSingle(sfSessionActor, m)
-        case m@_ => log.warning(s"[${sessionId.id}] Received a message it cannot handle, MsgType=${message.body.msgType}")
+        case m@_ => context.log.warn(s"[${sessionId.id}] Received a message it cannot handle, MsgType=${message.body.msgType}")
       }
-    case BusinessFixMsgOutAck(sessionId: SfSessionId, sfSessionActor: ActorRef, correlationId:String) =>
+      Behaviors.same
+    case BusinessFixMsgOutAck(sessionId: SfSessionId, sfSessionActor: ActorRef[SfSessionActorCommand], correlationId:String) =>
       // You should have a HashMap of stuff you send, and when you get this remove from your set.
       // Read the Akka IO TCP guide for ACK'ed messages and you will see
       sentMessages.get(correlationId).foreach(tstamp =>
-        log.debug(s"$correlationId send duration = ${(System.nanoTime()-tstamp)/1000} Micros"))
-    case BusinessRejectMessage(sessionId: SfSessionId, sfSessionActor: ActorRef, message: SfMessage) =>
-      log.warning(s"Session ${sessionId.id} has rejected the message ${message.toString()}")
+        context.log.debug(s"$correlationId send duration = ${(System.nanoTime()-tstamp)/1000} Micros"))
+      Behaviors.same
+    case BusinessRejectMessage(sessionId: SfSessionId, sfSessionActor: ActorRef[SfSessionActorCommand], message: SfMessage) =>
+      context.log.warn(s"Session ${sessionId.id} has rejected the message ${message.toString()}")
+      Behaviors.same
   }
 
   /**
     * @param fixSessionActor This will be a SfSessionActor, but sadly Actor ref's are not typed
     *                        as yet
     */
-  def onNewOrderSingle(fixSessionActor: ActorRef, o: NewOrderSingleMessage) = {
+  def onNewOrderSingle(fixSessionActor: ActorRef[SfSessionActorCommand], o: NewOrderSingleMessage) = {
     val symbol = o.instrumentComponent.symbolField
     val side = o.sideField
     val quantity = o.orderQtyDataComponent.orderQtyField.getOrElse(OrderQtyField(0)).value
