@@ -1,12 +1,15 @@
 package org.sackfix.client
 
-import java.time.LocalDateTime
+import akka.actor.typed.Behavior
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import java.time.LocalDateTime
+import akka.actor.typed.ActorRef
 import org.sackfix.boostrap._
 import org.sackfix.common.message.SfMessage
 import org.sackfix.field._
 import org.sackfix.fix44._
+import org.sackfix.session.SfSessionActor.{BusinessFixMsgOut, SfSessionActorCommand}
 import org.sackfix.session.SfSessionId
 
 import scala.collection.mutable
@@ -21,47 +24,51 @@ import scala.collection.mutable
   * This will pretty much avoid all back pressure issues. ie if sendMessages.size>1 wait
   */
 object ClientOMSMessageActor {
-  def props(): Props = Props(new ClientOMSMessageActor)
+  def apply(): Behavior[SfBusinessFixInfo] =
+    Behaviors.setup(context => new ClientOMSMessageActor(context))
 }
 
-class ClientOMSMessageActor extends Actor with ActorLogging {
+class ClientOMSMessageActor(context: ActorContext[SfBusinessFixInfo]) extends AbstractBehavior[SfBusinessFixInfo](context) {
   private val sentMessages = mutable.HashMap.empty[String, Long]
   private var orderId = 0
   private var isOpen = false
 
-  override def receive: Receive = {
-    case FixSessionOpen(sessionId: SfSessionId, sfSessionActor: ActorRef) =>
-      log.info(s"Session ${sessionId.id} is OPEN for business")
-      isOpen = true
-      sendANos(sfSessionActor)
-    case FixSessionClosed(sessionId: SfSessionId) =>
-      // Anything not acked did not make it our to the TCP layer - even if acked, there is a risk
-      // it was stuck in part or full in the send buffer.  So you should worry when sending fix
-      // using any tech that the message never arrives.
-      log.info(s"Session ${sessionId.id} is CLOSED for business")
-      isOpen = false
-    case BusinessFixMessage(sessionId: SfSessionId, sfSessionActor: ActorRef, message: SfMessage) =>
-      // ignore duplicates...obviously you should check more than simply discarding.
-      if (!message.header.possDupFlagField.getOrElse(PossDupFlagField(false)).value) {
-        message.body match {
-          case m: ExecutionReportMessage => onExecutionReport(sfSessionActor, m)
-          case m@_ => log.warning(s"[${sessionId.id}] Received a message it cannot handle, MsgType=${message.body.msgType}")
+  override def onMessage(msg: SfBusinessFixInfo): Behavior[SfBusinessFixInfo] = {
+    msg match {
+      case FixSessionOpen(sessionId: SfSessionId, sfSessionActor: ActorRef[SfSessionActorCommand]) =>
+        context.log.info(s"Session ${sessionId.id} is OPEN for business")
+        isOpen = true
+        sendANos(sfSessionActor)
+      case FixSessionClosed(sessionId: SfSessionId) =>
+        // Anything not acked did not make it our to the TCP layer - even if acked, there is a risk
+        // it was stuck in part or full in the send buffer.  So you should worry when sending fix
+        // using any tech that the message never arrives.
+        context.log.info(s"Session ${sessionId.id} is CLOSED for business")
+        isOpen = false
+      case BusinessFixMessage(sessionId: SfSessionId, sfSessionActor: ActorRef[SfSessionActorCommand], message: SfMessage) =>
+        // ignore duplicates...obviously you should check more than simply discarding.
+        if (!message.header.possDupFlagField.getOrElse(PossDupFlagField(false)).value) {
+          message.body match {
+            case m: ExecutionReportMessage => onExecutionReport(sfSessionActor, m)
+            case m@_ => context.log.warn(s"[${sessionId.id}] Received a message it cannot handle, MsgType=${message.body.msgType}")
+          }
         }
-      }
-    case BusinessFixMsgOutAck(sessionId: SfSessionId, sfSessionActor: ActorRef, correlationId: String) =>
-      // You should have a HashMap of stuff you send, and when you get this remove from your set.
-      // Read the Akka IO TCP guide for ACK'ed messages and you will see
-      sentMessages.get(correlationId).foreach(tstamp =>
-        log.debug(s"$correlationId send duration = ${(System.nanoTime() - tstamp) / 1000} Micros"))
-    case BusinessRejectMessage(sessionId: SfSessionId, sfSessionActor: ActorRef, message: SfMessage) =>
-      log.warning(s"Session ${sessionId.id} has rejected the message ${message.toString()}")
+      case BusinessFixMsgOutAck(sessionId: SfSessionId, sfSessionActor: ActorRef[SfSessionActorCommand], correlationId: String) =>
+        // You should have a HashMap of stuff you send, and when you get this remove from your set.
+        // Read the Akka IO TCP guide for ACK'ed messages and you will see
+        sentMessages.get(correlationId).foreach(tstamp =>
+          context.log.debug(s"$correlationId send duration = ${(System.nanoTime() - tstamp) / 1000} Micros"))
+      case BusinessRejectMessage(sessionId: SfSessionId, sfSessionActor: ActorRef[SfSessionActorCommand], message: SfMessage) =>
+        context.log.warn(s"Session ${sessionId.id} has rejected the message ${message.toString()}")
+    }
+    Behaviors.same
   }
 
   /**
     * @param fixSessionActor This will be a SfSessionActor, but sadly Actor ref's are not typed
     *                        as yet
     */
-  def onExecutionReport(fixSessionActor: ActorRef, o: ExecutionReportMessage) = {
+  def onExecutionReport(fixSessionActor: ActorRef[SfSessionActorCommand], o: ExecutionReportMessage) = {
     val symbol = o.instrumentComponent.symbolField
     val side = o.sideField
 
@@ -76,7 +83,7 @@ class ClientOMSMessageActor extends Actor with ActorLogging {
     sendANos(fixSessionActor)
   }
 
-  def sendANos(fixSessionActor: ActorRef) = {
+  def sendANos(fixSessionActor: ActorRef[SfSessionActorCommand]) = {
     if (isOpen) {
       // validation etc..but send back the ack
       // NOTE, AKKA is Asynchronous.  You have ZERO idea if this send worked, or coincided with socket close down and so on.
