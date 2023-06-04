@@ -1,4 +1,4 @@
-<a href="http://www.sackfix.org/"><img src ="http://www.sackfix.org/assets/sf_logo.png" /></a>
+<a href="https://pendared.github.io/sackfix/"><img src ="https://pendared.github.io/sackfix/assets/sf_logo.png" /></a>
 
 # SackFix
 
@@ -36,4 +36,4 @@ Please visit [sackfix.org](http://www.sackfix.org) for instructions on how to ru
 Best wishes,
 Jonathan
 
-<a href="http://www.sackfix.org/"><img src ="http://www.sackfix.org/assets/sackfix.png" /></a>
+<a href="https://pendared.github.io/sackfix/"><img src ="https://pendared.github.io/sackfix/assets/sackfix.png" /></a>
