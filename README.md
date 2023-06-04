@@ -12,7 +12,7 @@ To get started simply download this project and start the acceptor and then the 
 * [Messages](https://github.com/PendaRed/sackfixmessages): Code generated Fix Messages for all versions of fix.
 * [Common](https://github.com/PendaRed/sackfix): The code generator and common classes - including all the code generated Fields.
 
-Full documentation is at [SackFix.org](http://www.sackfix.org/).
+Full documentation is at the [github pages](https://pendared.github.io/sackfix/).
 
 ## Versions
 
@@ -31,7 +31,7 @@ Feel free to upgrade and generate your own version.
 SackFix is a Scala Fix Engine - ie a session layer fix implememtion including all messages and fields as strongly typed classes.   This project includes example code on how to write your own Fix acceptor or initiator 
 using AKKA.   This is probably the only project you should copy - and then cut and paste the code you want into your own projects.
 
-Please visit [github pages](http://https://pendared.github.io/sackfix/) for instructions on how to run the initiator and acceptor.
+Please visit the [github pages](http://https://pendared.github.io/sackfix/) for instructions on how to run the initiator and acceptor.
 
 Best wishes,
 Jonathan
